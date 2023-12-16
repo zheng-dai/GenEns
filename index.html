@@ -1,6 +1,7 @@
 <html>
     <head>
         <title>Training Data Attribution for Diffusion Models</title>
+        <link rel="stylesheet" href="style.css">
         <style>
             .mainContainer {
                 display: flex;
@@ -26,12 +27,14 @@
                 margin-top: 0;
                 margin-bottom: 0.5em;
                 background-color: rgba(0,0,0,0.1);
-                transition: color 0.25s linear, background-color 0.25s linear;
+                transition: color 0.25s linear, background-color 0.25s linear, scale 0.25s ease-in-out;
                 color: rgb(64,64,64);
+                scale: 0.99;
             }
 
             .abstract:hover {
                 background-color: rgba(0,0,0,0.05);
+                scale: 1;
                 color: black;
             }
 
@@ -67,12 +70,12 @@
                 font-weight: 900;
                 font-variant: small-caps;
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                transition: box-shadow 0.1s linear, background-color 0.1s linear;
+                transition: box-shadow 0.2s linear, background-color 0.2s linear;
             }
 
             .button:hover {
                 background-color: coral;
-                box-shadow: 0.5em 0.5em rgba(0,0,0,0.25);
+                box-shadow: 0.5em 0.5em rgba(0,0,0,1);
             }
 
             a:link { text-decoration: none; }
@@ -101,10 +104,29 @@
                 font-weight: 100;
                 opacity: 0.5;
             }
+
+            .coverScreen {
+                z-index: 10;
+                height: max(100vh, 100vw);
+                width: max(100vh, 100vw);
+                position: fixed;
+                background-color: black;
+                pointer-events: none;
+            }
+
+            .coverScreen>canvas {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
         </style>
     </head>
     <body style="margin: 0; padding: 0;">
-        <div class="mainContainer">
+        <div class="coverScreen" id="cover">
+            <canvas id="canvas" width="256" height="256"></canvas>
+        </div>
+        <div class="mainContainer" style="filter: blur(10px);" id="mainContainer">
             <div class="splash">
                 <div class="titleText">
                     <h1>Training Data Attribution for Diffusion Models</h1>
@@ -119,11 +141,15 @@
                 <div class="abstract">
                     <h3>Overview</h3>
                     <p>
-                        The use of <b>generative diffusion models</b> for creative uses has sparked serious ethical and legal discussions, in particular surrounding the sourcing and use of <b>training data</b>. Yet the role that training data plays in producing these models, a <em>fundamental element of this discussion</em>, remains poorly understood. To address this, we tackle the technical challenge of attributing the output of generative diffusion models to specific training data.
+                        The use of <b>generative diffusion models</b> for creative uses has sparked serious ethical and legal discussions, in particular surrounding the sourcing and use of <b>training data</b>. Yet the role that training data plays in producing these models, a <em>key element of this discussion</em>, remains poorly understood. To address this, we tackle the technical challenge of attributing the output of generative diffusion models to specific training data.
                     </p>
                     <h3>Technical Details</h3>
                     <p>
-                        We show how a collection of diffusion models trained on different (yet potentially overlapping) batches of training data can be used to collaboratively generate a picture. The influence of a given piece of training data can then be removed from the generated picture by removing the contributions of all the models that have seen that piece of data. This gives a <em>counterfactual picture</em>, which captures what the original picture would have looked like had the original training data not contained the removed training data. The counterfactual picture can then be compared with the original picture to obtain some qualitative or quantitative measure influence.
+                        We show how a collection of diffusion models trained on different (yet potentially overlapping) batches of training data can be used to collaboratively generate a picture. The influence of a given piece of training data can then be removed from the generated picture by removing the contributions of all the models that have seen that piece of data. This gives a <em>counterfactual picture</em>, which captures what the original picture would have looked like had the original training data not contained the removed training data. The counterfactual picture can then be compared with the original picture to obtain some qualitative or quantitative measure of influence.
+                    </p>
+                    <h3>Main Contributions</h3>
+                    <p>
+                        We provide to our knowledge the first method of attributing the samples produced by generative diffusion models to training data.
                     </p>
                 </div>
                 <div style="border-bottom: solid 2px rgba(0,0,0,1); height: 0.1em; width: 100%;"></div>
@@ -143,5 +169,70 @@
                 </div>
             </div>
         </div>
+
+        <script>
+            var animate = -3;
+            var cover = document.getElementById("cover");
+            cover.style.setProperty("opacity", 1);
+
+            var canvas = document.getElementById("canvas");
+            var ctx = canvas.getContext("2d");
+            var w = canvas.width;
+            var h = canvas.height;
+            ctx.fillStyle = "gray";
+
+            var mainContainer = document.getElementById("mainContainer");
+
+            var idata = ctx.createImageData(512, 512); // create image data
+            var buffer32 = new Uint32Array(idata.data.buffer);  // get 32-bit view
+            var bufferFloat = []; // keeps continuous brownian motion data
+            for (let i = 0; i < buffer32.length; i++) bufferFloat.push(0);
+
+            function noise(ctx, sigma) {
+                var len = buffer32.length - 1;
+                while(len--){
+                    //draw normal rv
+                    const u = 1 - Math.random();
+                    const v = Math.random();
+                    const z = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v )
+                    //brownian motion
+                    bufferFloat[len] = Math.max(Math.min( ((bufferFloat[len] + (z*sigma) - 0.5)*0.95) + 0.5, 0.8 ), 0.2);
+                    const intBuffer = ( (Math.floor(bufferFloat[len] * 256)) % 256 ) >>> 0;
+                    buffer32[len] = (intBuffer<<0) | (intBuffer<<16) | (intBuffer<<8) | ((255>>>0)<<24);
+                }
+                ctx.putImageData(idata, 0, 0);
+            }
+
+            function initnoise(ctx) {
+                var len = buffer32.length - 1;
+                while(len--){
+                    bufferFloat[len] = (Math.random()*0.1) + 0.45;
+                    const intBuffer = ( (Math.floor(bufferFloat[len] * 256)) % 256 ) >>> 0;
+                    buffer32[len] = (intBuffer<<0) | (intBuffer<<16) | (intBuffer<<8) | ((255>>>0)<<24);
+                }
+                ctx.putImageData(idata, 0, 0);
+            }
+
+            initnoise(ctx);
+
+            (function loop() {
+                noise(ctx, 0.1);
+                animate = animate + 0.25;
+                if (animate > 5)
+                {
+                    animate = 5;
+                    mainContainer.style.setProperty("filter", "blur(0px)");
+                    cover.style.setProperty("opacity", 0);
+                }
+                else
+                {
+                    const alpha = 1/(1 + Math.exp(animate));
+                    cover.style.setProperty("opacity", alpha);
+                    if (animate > -2) mainContainer.style.setProperty("filter", "blur(" + Math.max(6-(2*animate),0) + "px)");
+                    setTimeout( () => requestAnimationFrame(loop), 50 );
+                }
+            })();
+        </script>
+
     </body>
 </html>
